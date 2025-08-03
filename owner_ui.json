@@ -1,0 +1,27 @@
+{
+    "get_owner_main_menu": {
+        "row_width": 2,
+        "buttons": [
+            {"text": "مدیریت ادمین‌ها 👮‍♂️", "callback_data": "owner_manage_admins"},
+            {"text": "بن/آزادسازی کاربران 🚫", "callback_data": "owner_manage_ban"},
+            {"text": "مشاهده گروه‌ها و کانال‌ها 📡", "callback_data": "owner_view_groups"},
+            {"text": "بازگشت ⬅️", "callback_data": "owner_back"}
+        ]
+    },
+    "get_admin_management_menu": {
+        "row_width": 1,
+        "buttons": [
+            {"text": "افزودن ادمین ➕", "callback_data": "add_admin"},
+            {"text": "حذف ادمین ➖", "callback_data": "remove_admin"},
+            {"text": "بازگشت 🔙", "callback_data": "owner_main"}
+        ]
+    },
+    "get_ban_menu": {
+        "row_width": 1,
+        "buttons": [
+            {"text": "بن کردن کاربر 🚫", "callback_data": "ban_user"},
+            {"text": "آزادسازی کاربر ✅", "callback_data": "unban_user"},
+            {"text": "بازگشت 🔙", "callback_data": "owner_main"}
+        ]
+    }
+}
