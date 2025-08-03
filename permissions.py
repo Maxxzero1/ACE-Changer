@@ -1,72 +1,95 @@
-# permissions.py
+import json
+import sqlite3
 
-# لیست مالک‌ها (فقط دستی قابل تغییره)
-MasterList = {
-    # user_id: "name"
-    # مثال:
-    # 123456789: "Abtin",
-}
+SUPERUSERS_FILE = 'superusers.json'
+ADMINS_DB = 'permissions.db'
 
-# لیست اونرها: مشخص برای هر گروه یا کانال
-OwnerList = {
-    # group_id: [user_id1, user_id2, ...]
-    # مثال:
-    # -100111222333: [111, 222],
-}
+def _init_admin_db():
+    with sqlite3.connect(ADMINS_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admins (
+                chat_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                PRIMARY KEY (chat_id, user_id)
+            )
+        ''')
+        conn.commit()
 
-# لیست ادمین‌ها: مشخص برای هر گروه یا کانال
-AdminList = {
-    # group_id: [user_id1, user_id2, ...]
-    # مثال:
-    # -100111222333: [333, 444],
-}
+def is_admin_in_db(chat_id: int, user_id: int) -> bool:
+    with sqlite3.connect(ADMINS_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT EXISTS(SELECT 1 FROM admins WHERE chat_id = ? AND user_id = ?)", (chat_id, user_id))
+        return cursor.fetchone()[0] == 1
 
+def add_admin_to_db(chat_id: int, user_id: int):
+    with sqlite3.connect(ADMINS_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO admins (chat_id, user_id) VALUES (?, ?)", (chat_id, user_id))
+        conn.commit()
 
-# نقش کاربر رو مشخص می‌کنه
+def remove_admin_from_db(chat_id: int, user_id: int):
+    with sqlite3.connect(ADMINS_DB) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM admins WHERE chat_id = ? AND user_id = ?", (chat_id, user_id))
+        conn.commit()
+
+def _load_superusers():
+    try:
+        with open(SUPERUSERS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            masters = {int(k): v for k, v in data.get("masters", {}).items()}
+            owners = {int(k): v for k, v in data.get("owners", {}).items()}
+            return masters, owners
+
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}, {}
+
+def _save_superusers(masters, owners):
+    with open(SUPERUSERS_FILE, 'w', encoding='utf-8') as f:
+        data = {"masters": masters, "owners": owners}
+        json.dump(data, f, indent=4)
+
+_init_admin_db()
+MasterList, OwnerList = _load_superusers()
+
 def get_user_role(user_id: int, chat_id: int) -> str:
     if user_id in MasterList:
         return "master"
-    elif chat_id in OwnerList and user_id in OwnerList[chat_id]:
+    
+    if chat_id in OwnerList and user_id in OwnerList.get(chat_id, []):
         return "owner"
-    elif chat_id in AdminList and user_id in AdminList[chat_id]:
+    
+    if is_admin_in_db(chat_id, user_id):
         return "admin"
-    else:
-        return "user"
 
+    return "user"
 
-# چک می‌کنه که آیا این یارو اجازه انجام کاری داره یا نه
 def can_manage_settings(user_id: int, chat_id: int) -> bool:
-    role = get_user_role(user_id, chat_id)
-    return role in ["owner", "master"]
-
+    return get_user_role(user_id, chat_id) in ["owner", "master"]
 
 def can_announce_prices(user_id: int, chat_id: int) -> bool:
-    role = get_user_role(user_id, chat_id)
-    return role in ["admin", "owner", "master"]
+    return get_user_role(user_id, chat_id) in ["admin", "owner", "master"]
 
-
-def can_request_prices(user_id: int, chat_id: int, only_admin_can_request: bool) -> bool:
-    role = get_user_role(user_id, chat_id)
-    if only_admin_can_request:
-        return role in ["admin", "owner", "master"]
-    else:
-        return True
-
-
-# فقط مستر بتونه ببینه عضو کجاها هستیم
 def is_master(user_id: int) -> bool:
     return user_id in MasterList
 
-
-# برای اضافه کردن Owner جدید به گروه خاص
 def add_owner(chat_id: int, user_id: int):
     OwnerList.setdefault(chat_id, [])
     if user_id not in OwnerList[chat_id]:
         OwnerList[chat_id].append(user_id)
+        _save_superusers(MasterList, OwnerList) # ذخیره در JSON
 
+def remove_owner(chat_id: int, user_id: int):
+    if chat_id in OwnerList and user_id in OwnerList[chat_id]:
+        OwnerList[chat_id].remove(user_id)
+        if not OwnerList[chat_id]:
+            del OwnerList[chat_id]
 
-# برای اضافه کردن Admin جدید به گروه خاص
+        _save_superusers(MasterList, OwnerList) # ذخیره در JSON
+
 def add_admin(chat_id: int, user_id: int):
-    AdminList.setdefault(chat_id, [])
-    if user_id not in AdminList[chat_id]:
-        AdminList[chat_id].append(user_id)
+    add_admin_to_db(chat_id, user_id) # ذخیره در SQLite
+
+def remove_admin(chat_id: int, user_id: int):
+    remove_admin_from_db(chat_id, user_id) # حذف از SQLite
